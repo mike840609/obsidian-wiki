@@ -36,15 +36,42 @@ Compare each source in `.manifest.json` against its file's modification time. Cl
 - **Stale** — `mtime > ingested_at` (new content exists, not yet ingested)
 - **Missing** — source file no longer exists
 
-**Step 2: Index refresh**
+**Step 2: Log rotation (monthly)**
+
+Read `$OBSIDIAN_VAULT_PATH/log.md` and compare each entry's `[YYYY-MM-…]` timestamp prefix against the current month:
+
+- **All entries are from the current month (or the log is empty)** — skip this step. This is the normal daily case: rotation fires once on the first run of a new month, and every run after that is a no-op.
+- **Entries from a previous month exist** — move them out of `log.md`:
+  - For each previous month present, write its entries (verbatim, in original order) to `journal/log-archive-YYYY-MM.md`. Append if the page already exists — never overwrite. Create it with the required frontmatter:
+
+    ```markdown
+    ---
+    title: Log Archive YYYY-MM
+    category: journal
+    tags: [log-archive]
+    sources: [log.md]
+    created: <now>
+    updated: <now>
+    summary: Archived log.md entries from YYYY-MM.
+    ---
+
+    # Log Archive YYYY-MM
+
+    - [YYYY-MM-DDTHH:MM:SSZ] ...
+    ```
+
+  - Rewrite `log.md` keeping its header and only the current-month entries.
+  - The index refresh in the next step picks up the new archive page — make sure it lands under the Journal section of `index.md` with a one-line summary, like any other page.
+
+**Step 3: Index refresh**
 
 Read `$OBSIDIAN_VAULT_PATH/index.md`. If any pages in the vault are missing from the index (or vice versa), update the index. Use `find $OBSIDIAN_VAULT_PATH -name "*.md" -not -path "*/_*"` to enumerate vault pages, then reconcile against the index.
 
-**Step 3: hot.md update**
+**Step 4: hot.md update**
 
 Read `hot.md`. If it's >48h old based on its `updated:` frontmatter, regenerate it: read the 10 most recently modified wiki pages and write a fresh ~500-word semantic snapshot of what the wiki covers. This keeps the next session's context warm without a full vault crawl.
 
-**Step 4: Write state**
+**Step 5: Write state**
 
 Write to the vault-scoped `$STATE_DIR` derived in "Before You Start":
 
@@ -54,7 +81,7 @@ echo "<stale_count>" > "$STATE_DIR/.pending_delta"
 echo "$OBSIDIAN_VAULT_PATH" > "$STATE_DIR/.vault_path"
 ```
 
-**Step 5: Spawn impl-validator**
+**Step 6: Spawn impl-validator**
 
 After the cycle, spawn `impl-validator` as a subagent:
 
@@ -71,18 +98,19 @@ impl-validator check:
     - Does .pending_delta contain a non-negative integer?
     - Does hot.md have an updated: frontmatter field set to today?
     - Does index.md list at least as many pages as exist in the vault?
+    - If log rotation ran: does journal/log-archive-YYYY-MM.md have the required frontmatter, and is log.md free of previous-month entries?
 ```
 
 Apply any FAILs before logging.
 
-**Step 6: Log**
+**Step 7: Log**
 
 Append to `$OBSIDIAN_VAULT_PATH/log.md`:
 ```
-- [TIMESTAMP] DAILY-UPDATE fresh=N stale=N missing=N index_added=N hot_refreshed=true|false
+- [TIMESTAMP] DAILY-UPDATE fresh=N stale=N missing=N index_added=N hot_refreshed=true|false log_rotated=true|false
 ```
 
-**Step 7: Report to user**
+**Step 8: Report to user**
 
 ```
 ## Daily Wiki Update
@@ -90,6 +118,7 @@ Append to `$OBSIDIAN_VAULT_PATH/log.md`:
 - Sources: N fresh · N stale · N missing
 - Index: N pages (N added, N removed)
 - hot.md: refreshed / up to date
+- log.md: rotated N entries to [[log-archive-YYYY-MM]] / no rotation needed
 
 Stale sources (run to sync):
   /wiki-history-ingest claude   — N sessions since last ingest
