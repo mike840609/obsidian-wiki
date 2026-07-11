@@ -295,7 +295,59 @@ SYNC_SCRIPT
   fi
 fi
 
-# ── Step 5: Summary ──────────────────────────────────────────
+# ── Step 5: Claude Code SessionStart hook (optional) ─────────
+# Registers scripts/sessionstart-hot.sh in ~/.claude/settings.json so every
+# new Claude Code session starts with the vault's hot.md already in context.
+HOOK_CONFIGURED=false
+HOOK_SCRIPT="$SCRIPT_DIR/scripts/sessionstart-hot.sh"
+
+echo ""
+read -p "  Auto-load your wiki's hot.md into Claude Code sessions (SessionStart hook)? [Y/n]: " ADD_HOOK || true
+if [[ ! "$ADD_HOOK" =~ ^[Nn]$ ]]; then
+  chmod +x "$HOOK_SCRIPT"
+  CLAUDE_SETTINGS="${CLAUDE_SETTINGS:-$HOME/.claude/settings.json}"
+  mkdir -p "$(dirname "$CLAUDE_SETTINGS")"
+  # Merge into existing settings.json via python3 stdlib — never clobber.
+  if HOOK_RESULT=$(HOOK_SCRIPT="$HOOK_SCRIPT" CLAUDE_SETTINGS="$CLAUDE_SETTINGS" python3 - <<'PYEOF'
+import json, os
+
+path = os.environ["CLAUDE_SETTINGS"]
+cmd = os.environ["HOOK_SCRIPT"]
+
+settings = {}
+if os.path.exists(path):
+    with open(path) as f:
+        settings = json.load(f)
+
+entries = settings.setdefault("hooks", {}).setdefault("SessionStart", [])
+already = any(
+    hook.get("command", "").endswith("sessionstart-hot.sh")
+    for entry in entries
+    for hook in entry.get("hooks", [])
+)
+if already:
+    print("exists")
+else:
+    entries.append({"hooks": [{"type": "command", "command": cmd}]})
+    with open(path, "w") as f:
+        json.dump(settings, f, indent=2)
+        f.write("\n")
+    print("registered")
+PYEOF
+  ); then
+    if [ "$HOOK_RESULT" = "registered" ]; then
+      echo "✅  SessionStart hook registered in $CLAUDE_SETTINGS"
+    else
+      echo "    ℹ️  SessionStart hook already in $CLAUDE_SETTINGS"
+    fi
+    HOOK_CONFIGURED=true
+  else
+    echo "⚠️   Could not update $CLAUDE_SETTINGS (invalid JSON?) — register manually:"
+    echo "      hooks → SessionStart → command: $HOOK_SCRIPT"
+  fi
+fi
+
+# ── Step 6: Summary ──────────────────────────────────────────
 SKILL_COUNT=$(echo "$SKILLS_DIR"/*/  | tr ' ' '\n' | grep -c /)
 
 echo ""
@@ -308,6 +360,9 @@ echo "                  Codex, Hermes, OpenClaw, OpenCode, Aider, Factory Droid,
 echo "                  Trae, Trae CN, Kiro, Pi, GitHub Copilot (CLI + VS Code Chat)"
 if $SYNC_CONFIGURED; then
 echo " GitHub sync:     wiki-sync  (script: ~/.obsidian-wiki/sync.sh)"
+fi
+if $HOOK_CONFIGURED; then
+echo " SessionStart:    hot.md auto-loads into Claude Code sessions"
 fi
 echo ""
 echo " Bootstrap files:"

@@ -404,6 +404,12 @@ git remote add origin https://github.com/you/my-wiki.git
 
 ---
 
+## Warm session start (Claude Code hook)
+
+`setup.sh` also offers to register [`scripts/sessionstart-hot.sh`](scripts/sessionstart-hot.sh) as a Claude Code **SessionStart** hook in `~/.claude/settings.json` (merged into your existing settings, never clobbered). At the start of every session the hook resolves your vault via the standard config chain (nearest `.env` with `OBSIDIAN_VAULT_PATH`, else `~/.obsidian-wiki/config`) and prints the vault's `hot.md` — the ~500-word snapshot of recent wiki activity — straight into agent context, so sessions start warm without crawling the vault. If no config or `hot.md` exists, it exits silently.
+
+---
+
 ## Skills
 
 Everything lives in `.skills/`. Each skill is a markdown file the agent reads when triggered:
