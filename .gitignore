@@ -15,6 +15,9 @@ __pycache__/
 # Local vault — personal knowledge, never published with the framework
 /vault/
 
+# CodeGraph local generated workspace/index (rebuildable)
+/.codegraph
+
 # Packed browser extension (rebuildable from extensions/brain-capture/)
 extensions/brain-capture/*.zip
 
